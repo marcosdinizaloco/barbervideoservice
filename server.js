@@ -92,4 +92,6 @@ app.listen(PORT, () => {
   console.log(`[barber-video-service] rodando na porta ${PORT}`);
   console.log(`[barber-video-service] vídeos publicados em ${PUBLIC_BASE_URL}/videos/...`);
 });
-app.get/(request,response){response.send"barbervideoserviceonline"} 
+app.get('/', (req, res) => {
+  res.send('Barber Video Service Online');
+});
