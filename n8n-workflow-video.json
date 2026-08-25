@@ -1,0 +1,76 @@
+{
+  "name": "Barber OS - Gerar Video Walkthrough",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "no-anterior",
+      "name": "1. (seu fluxo existente termina aqui, com o app já publicado)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://SEU-SERVIDOR-DE-VIDEO.com/gerar-video",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "x-token", "value": "={{$env.VIDEO_SERVICE_TOKEN}}" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"url\": \"{{$json.urlDoPainel}}\",\n  \"slug\": \"{{$json.slug}}\",\n  \"senha\": \"{{$json.senha}}\"\n}",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "http-gerar-video",
+      "name": "2. Gerar vídeo (chama o serviço)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "phone": "={{$json.telefoneResponsavel}}",
+        "message": "=Prontinho! Seu aplicativo e painel estão no ar:\n\n📱 App: {{$('1. (seu fluxo existente termina aqui, com o app já publicado)').item.json.urlApp}}\n📊 Painel: {{$('1. (seu fluxo existente termina aqui, com o app já publicado)').item.json.urlPainel}}\n\nOlha esse vídeo rapidinho mostrando como funciona 👇"
+      },
+      "id": "zapi-texto",
+      "name": "3. Envia texto + links (Z-API)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [720, 220],
+      "notes": "Ajuste pro node HTTP Request apontando pro endpoint de texto da sua instância Z-API, ou pro node oficial se você usa um community node de Z-API."
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "sendVideo",
+        "phone": "={{$('1. (seu fluxo existente termina aqui, com o app já publicado)').item.json.telefoneResponsavel}}",
+        "video": "={{$json.videoUrl}}"
+      },
+      "id": "zapi-video",
+      "name": "4. Envia vídeo (Z-API)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [720, 380],
+      "notes": "Endpoint Z-API de envio de vídeo por URL. Ajuste a URL/instance/token conforme sua conta Z-API."
+    }
+  ],
+  "connections": {
+    "1. (seu fluxo existente termina aqui, com o app já publicado)": {
+      "main": [[{ "node": "2. Gerar vídeo (chama o serviço)", "type": "main", "index": 0 }]]
+    },
+    "2. Gerar vídeo (chama o serviço)": {
+      "main": [[
+        { "node": "3. Envia texto + links (Z-API)", "type": "main", "index": 0 },
+        { "node": "4. Envia vídeo (Z-API)", "type": "main", "index": 0 }
+      ]]
+    }
+  }
+}
