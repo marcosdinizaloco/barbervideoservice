@@ -2,8 +2,12 @@
 set -e
 
 echo "===> [1/8] Node.js 20 + git"
+dnf module reset -y nodejs 2>/dev/null || true
+dnf module disable -y nodejs 2>/dev/null || true
+dnf remove -y nodejs npm nsolid nodejs-full-i18n 2>/dev/null || true
 curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -
-dnf install -y nodejs git
+dnf install -y nodejs git --allowerasing
+node -v
 
 echo "===> [2/8] ffmpeg (build estatico)"
 if ! command -v ffmpeg >/dev/null 2>&1; then
