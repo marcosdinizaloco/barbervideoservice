@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 set -e
 
-echo "===> [1/8] Node.js 20 + git"
+echo "===> [1/8] Node.js 20 (modulo nativo do AlmaLinux) + git"
+dnf install -y git
+rm -f /etc/yum.repos.d/nodesource*.repo
+dnf clean all
 dnf module reset -y nodejs 2>/dev/null || true
-dnf module disable -y nodejs 2>/dev/null || true
-dnf remove -y nodejs npm nsolid nodejs-full-i18n 2>/dev/null || true
-curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -
-dnf install -y nodejs git --allowerasing
-node -v
+dnf remove -y nodejs npm nsolid 2>/dev/null || true
+dnf module enable -y nodejs:20
+dnf install -y nodejs --allowerasing
+echo "Node instalado: $(node -v)"
 
 echo "===> [2/8] ffmpeg (build estatico)"
 if ! command -v ffmpeg >/dev/null 2>&1; then
