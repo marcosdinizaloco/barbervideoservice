@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 set -e
 
-echo "===> [1/8] Node.js 20 (modulo nativo do AlmaLinux) + git"
-dnf install -y git
-rm -f /etc/yum.repos.d/nodesource*.repo
-dnf clean all
-dnf module reset -y nodejs 2>/dev/null || true
-dnf remove -y nodejs npm nsolid 2>/dev/null || true
-dnf module enable -y nodejs:20
-dnf install -y nodejs --allowerasing
-echo "Node instalado: $(node -v)"
+echo "===> [1/8] Node.js 20 (binario oficial, por cima do 19 escondido) + git"
+dnf install -y git tar xz
+rm -f /usr/local/bin/node /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack
+cd /tmp
+curl -fsSLO https://nodejs.org/dist/v20.18.1/node-v20.18.1-linux-x64.tar.xz
+tar -xf node-v20.18.1-linux-x64.tar.xz -C /usr/local --strip-components=1
+rm -f node-v20.18.1-linux-x64.tar.xz
+hash -r
+echo "Node agora: $(node -v)"
 
 echo "===> [2/8] ffmpeg (build estatico)"
 if ! command -v ffmpeg >/dev/null 2>&1; then
@@ -45,6 +45,7 @@ firewall-cmd --add-port=3300/tcp --permanent 2>/dev/null || true
 firewall-cmd --reload 2>/dev/null || true
 
 echo "===> [8/8] Subir o servico com pm2"
+export PATH=/usr/local/bin:$PATH
 npm install -g pm2
 IP=$(curl -s ifconfig.me || hostname -I | awk '{print $1}')
 export PORT=3300
