@@ -1,3 +1,7 @@
+// ALOCO - Gerador de Video (mini app web + API pra n8n). Roda na VPS, porta 3300.
+// - Interface manual:  http://143.95.163.162:3300  (cola o link e clica Gerar)
+// - API pra n8n:       POST /api/gerar  {url}   -> gera e devolve {videoUrl} quando fica pronto
+//                      GET  /api/status/:slug   -> {done, videoUrl}
 const express = require('express');
 const { execFile } = require('child_process');
 const fs = require('fs');
@@ -6,7 +10,14 @@ const path = require('path');
 const app = express();
 const BASE = __dirname;
 const PORT = 3300;
+const HOST_PUBLICO = 'http://143.95.163.162:' + PORT; // usado nas URLs devolvidas pra n8n/Z-API
+
+// Token simples pra proteger a API (a n8n manda no header "x-token").
+// Troque por um segredo seu se quiser. Deixe igual aqui e na n8n.
+const API_TOKEN = 'aloco-troque-isto';
+
 app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
 fs.mkdirSync(path.join(BASE, 'saidas'), { recursive: true });
 app.use('/saidas', express.static(path.join(BASE, 'saidas')));
 
@@ -17,6 +28,26 @@ function slugFromUrl(u) {
 }
 const URL_OK = /^https:\/\/[a-z0-9.-]+\/clientes\/[a-z0-9._-]+\//i;
 
+// guarda o estado de cada geracao (pra API de status conseguir reportar erro)
+const jobs = {}; // slug -> {status:'gerando'|'pronto'|'erro', erro}
+
+function rodarGeracao(url, slug, cb) {
+  try { fs.unlinkSync(path.join(BASE, 'saidas', slug + '.mp4')); } catch (e) {}
+  jobs[slug] = { status: 'gerando', quando: Date.now() };
+  execFile('bash', ['gerar_video.sh', url, slug],
+    { cwd: BASE, timeout: 8 * 60 * 1000, maxBuffer: 10 * 1024 * 1024 },
+    (err, stdout, stderr) => {
+      const done = fs.existsSync(path.join(BASE, 'saidas', slug + '.mp4'));
+      if (err || !done) {
+        jobs[slug] = { status: 'erro', erro: String((stderr || err || '')).slice(-600) };
+      } else {
+        jobs[slug] = { status: 'pronto' };
+      }
+      if (cb) cb(jobs[slug]);
+    });
+}
+
+// ---------- INTERFACE MANUAL (mini app) ----------
 const PAGE = (body, refresh) => `<!doctype html><html lang=pt-BR><head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1">${refresh ? '<meta http-equiv="refresh" content="6">' : ''}
 <title>ALOCO - Gerar Video</title><style>
@@ -45,8 +76,7 @@ app.post('/gerar', (req, res) => {
       <a class="btn" href="/">Voltar</a>`));
   }
   const slug = slugFromUrl(url);
-  try { fs.unlinkSync(path.join(BASE, 'saidas', slug + '.mp4')); } catch (e) {}
-  execFile('bash', ['gerar_video.sh', url, slug], { cwd: BASE }, () => {});
+  rodarGeracao(url, slug); // roda em segundo plano
   res.redirect('/video/' + slug);
 });
 
@@ -55,8 +85,8 @@ app.get('/video/:slug', (req, res) => {
   const done = fs.existsSync(path.join(BASE, 'saidas', slug + '.mp4'));
   const body = done
     ? `<h1>✅ Vídeo pronto!</h1>
-       <video src="/saidas/${slug}.mp4" controls playsinline></video>
-       <a class="btn" href="/saidas/${slug}.mp4" download style="margin-top:14px">⬇️ Baixar vídeo</a>
+       <video src="/saidas/${slug}.mp4?v=${Date.now()}" controls playsinline></video>
+       <a class="btn" href="/saidas/${slug}.mp4?v=${Date.now()}" download style="margin-top:14px">⬇️ Baixar vídeo</a>
        <div class="small"><a href="/">← Gerar outro</a></div>`
     : `<h1>⏳ Gerando o vídeo...</h1>
        <p>Leva uns 2-3 minutos. Pode deixar essa página aberta — ela atualiza sozinha.</p>
@@ -64,5 +94,58 @@ app.get('/video/:slug', (req, res) => {
   res.send(PAGE(body, !done));
 });
 
+// ---------- API PRA n8n ----------
+function checarToken(req, res) {
+  if (!API_TOKEN) return true; // sem token configurado = liberado
+  if (req.get('x-token') === API_TOKEN) return true;
+  res.status(401).json({ ok: false, erro: 'token invalido' });
+  return false;
+}
+
+// POST /api/gerar {url}  -> SINCRONO: espera gerar e devolve {videoUrl}
+// (a geracao leva ~2-3 min; deixe o timeout do HTTP node da n8n em 300000)
+app.post('/api/gerar', (req, res) => {
+  if (!checarToken(req, res)) return;
+  const url = String((req.body && req.body.url) || '').trim();
+  if (!URL_OK.test(url)) return res.status(400).json({ ok: false, erro: 'url invalida' });
+  const slug = slugFromUrl(url);
+  rodarGeracao(url, slug, (fim) => {
+    if (fim.status === 'pronto') {
+      res.json({ ok: true, slug, videoUrl: `${HOST_PUBLICO}/saidas/${slug}.mp4` });
+    } else {
+      res.status(500).json({ ok: false, slug, erro: fim.erro || 'falha na geracao' });
+    }
+  });
+});
+
+// POST /api/gerar-async {url} -> devolve na hora {slug, statusUrl}; use com polling se preferir
+app.post('/api/gerar-async', (req, res) => {
+  if (!checarToken(req, res)) return;
+  const url = String((req.body && req.body.url) || '').trim();
+  if (!URL_OK.test(url)) return res.status(400).json({ ok: false, erro: 'url invalida' });
+  const slug = slugFromUrl(url);
+  rodarGeracao(url, slug);
+  res.json({ ok: true, slug, status: 'gerando',
+    videoUrl: `${HOST_PUBLICO}/saidas/${slug}.mp4`,
+    statusUrl: `${HOST_PUBLICO}/api/status/${slug}` });
+});
+
+// GET /api/status/:slug -> {done, status, videoUrl}
+app.get('/api/status/:slug', (req, res) => {
+  const slug = String(req.params.slug).replace(/[^a-z0-9-]/gi, '');
+  const done = fs.existsSync(path.join(BASE, 'saidas', slug + '.mp4'));
+  const job = jobs[slug] || {};
+  let status = 'gerando';
+  if (done) status = 'pronto';
+  else if (job.status === 'erro') status = 'erro';
+  res.json({ ok: true, slug, done, status, erro: job.erro || null,
+    videoUrl: `${HOST_PUBLICO}/saidas/${slug}.mp4` });
+});
+
 app.get('/status', (req, res) => res.json({ ok: true }));
-app.listen(PORT, () => console.log('ALOCO video UI on port ' + PORT));
+
+const server = app.listen(PORT, () => console.log('ALOCO video UI + API on port ' + PORT));
+// nao derrubar requisicoes longas (a geracao sincrona segura a conexao ~3 min)
+server.requestTimeout = 10 * 60 * 1000;
+server.headersTimeout = 10 * 60 * 1000 + 5000;
+server.timeout = 0;
