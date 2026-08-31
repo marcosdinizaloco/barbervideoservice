@@ -20,6 +20,11 @@ if ! command -v ffmpeg >/dev/null 2>&1; then
 fi
 ffmpeg -version | head -1
 
+echo "===> [2b/8] Python p/ o compositor (template v2)"
+dnf install -y python3 python3-pip >/dev/null 2>&1 || true
+pip3 install --quiet opencv-python-headless numpy
+python3 -c "import cv2, numpy; print('python OK:', cv2.__version__)"
+
 echo "===> [3/8] Bibliotecas do Chromium headless"
 dnf install -y alsa-lib atk at-spi2-atk at-spi2-core cups-libs libdrm mesa-libgbm \
   libxkbcommon libX11 libXcomposite libXdamage libXext libXfixes libXrandr \

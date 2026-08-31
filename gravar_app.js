@@ -83,39 +83,39 @@ async function screen(page, nome, dwellMs){
   try{ await page.goto(APP_URL,{waitUntil:'domcontentloaded',timeout:30000}); }
   catch(e){ await log(`ERRO ao abrir: ${e.message}`); }
   await page.waitForTimeout(1200);
-  await screen(page,'00_splash',1500);
+  await screen(page,'00_splash',2600);
   await page.waitForLoadState('networkidle',{timeout:15000}).catch(()=>{});
   await diag(page);                       // << me diz os nomes do menu e se logou
 
   await tap(page, ['Inicio','Início','Home'], 'nav Inicio');
   await page.waitForTimeout(800);
-  await screen(page,'01_inicio',3200);
+  await screen(page,'01_inicio',4500);
   await page.mouse.wheel(0,260); await page.waitForTimeout(1000);
-  await screen(page,'02_inicio_reservar',2400);
+  await screen(page,'02_inicio_reservar',4500);
   await page.mouse.wheel(0,-260); await page.waitForTimeout(400);
 
   await tap(page, ['Agendar','Agenda','Reservar meu horario','Reservar'], 'nav Agendar');
   await page.waitForTimeout(1000);
-  await screen(page,'03_agendar',3000);
+  await screen(page,'03_agendar',4500);
   await tap(page, ['Corte','Corte + Barba','Barba'], 'servico');
   await page.waitForTimeout(900);
-  await screen(page,'04_servico',2600);
+  await screen(page,'04_servico',4500);
 
   await tap(page, ['Fila','Entrar na fila','Entre na fila','Sem marcar','Espera'], 'nav Fila');
   await page.waitForTimeout(1000);
-  await screen(page,'05_fila',3000);
+  await screen(page,'05_fila',4500);
 
   await tap(page, ['Pacotes','Pacote','Planos'], 'nav Pacotes');
   await page.waitForTimeout(1000);
-  await screen(page,'06_pacotes',2400);
+  await screen(page,'06_pacotes',4500);
 
   await tap(page, ['Perfil','Conta','Meu perfil'], 'nav Perfil');
   await page.waitForTimeout(1000);
-  await screen(page,'07_perfil',2400);
+  await screen(page,'07_perfil',4500);
 
   await tap(page, ['Inicio','Início','Home'], 'nav Inicio (volta)');
   await page.waitForTimeout(900);
-  await screen(page,'08_inicio_fim',2400);
+  await screen(page,'08_inicio_fim',4500);
 
   await log('gravacao concluida, salvando...');
   const video = page.video();

@@ -1,6 +1,6 @@
 /* ============================================================================
    montar_reel.js  — corta a gravação do app (app.webm) nos pedaços que o
-   template cinematográfico espera e monta o "reel.mp4" (384x848, 30fps, ~42s).
+   template cinematográfico espera e monta o "reel.mp4" (384x848, 30fps, ~101s, template cinematografico v2).
    Usa os tempos de cada tela (marks.json) que o gravar_app.js salvou.
 
    Uso:
@@ -22,17 +22,17 @@ const marks = JSON.parse(fs.readFileSync(MK, 'utf8'));
 
 // plano do reel (casa com as legendas do template). [nome, chave_do_mark, duracao_s]
 const PLANO = [
-  ['splash',   '00_splash',           2],
-  ['home',     '01_inicio',           7],
-  ['reservar', '02_inicio_reservar',  5],
-  ['home2',    '01_inicio',           4],
-  ['agendar',  '03_agendar',          6],
-  ['servico',  '04_servico',          5],
-  ['fila',     '05_fila',             5],
-  ['perfil',   '07_perfil',           3],
-  ['homefim',  '08_inicio_fim',       5],
+  ['splash',   '00_splash',           4],
+  ['home',     '01_inicio',          16],
+  ['reservar', '02_inicio_reservar', 12],
+  ['home2',    '01_inicio',           9],
+  ['agendar',  '03_agendar',         15],
+  ['servico',  '04_servico',         12],
+  ['fila',     '05_fila',            12],
+  ['perfil',   '07_perfil',           8],
+  ['homefim',  '08_inicio_fim',      13],
 ];
-const EXTRACT = 2.2; // segundos "crus" pegos de cada tela (depois esticados p/ a duracao)
+// EXTRACT agora e adaptativo por segmento (ate 3.8s crus por tela)
 
 const W = 384, H = 848, FPS = 30;
 const tmp = path.join(DIR, '_seg');
@@ -45,7 +45,8 @@ PLANO.forEach((p, i) => {
   if (ms == null) { console.log(`(aviso) sem mark "${chave}", usando 0`); ms = 0; }
   const start = Math.max(0, ms / 1000 + 0.25);
   const seg = path.join(tmp, `s${String(i).padStart(2,'0')}_${nome}.mp4`);
-  // pega EXTRACT s da tela e ESTICA para "dur" s (setpts) -> vira cinematografico/estavel
+  // pega ate 3.8s crus da tela e ESTICA para "dur" s (setpts) -> cinematografico
+  const EXTRACT = Math.min(3.8, Math.max(2.0, dur / 4));
   const factor = (dur / EXTRACT).toFixed(4);
   // drawbox no topo = tampa a barra de status do iPhone (ponto vermelho, relogio, etc)
   const vf = `scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},drawbox=x=0:y=0:w=${W}:h=56:color=black:t=fill,setpts=${factor}*PTS,fps=${FPS}`;
