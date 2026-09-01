@@ -1,0 +1,37 @@
+# -*- coding: utf-8 -*-
+"""Corrige: (1) robo clicando em SAIR, (2) gravacao longa demais derrubando a sessao."""
+import re, io
+
+# ---------- gravar_app.js ----------
+p = 'gravar_app.js'
+g = io.open(p, encoding='utf-8').read()
+
+# 1) nunca clicar em Sair / logout / trocar de conta
+anchor = "if(!t||t.length>24) continue;"
+guard  = anchor + "\n      if(/sair|logout|encerrar|desconectar|trocar de conta/.test(t)) continue;"
+if "desconectar" not in g:
+    g = g.replace(anchor, guard, 1)
+
+# 2) 'Conta' casava com 'trocar de conta' -> remove esse rotulo
+g = g.replace("['Perfil','Conta','Meu perfil']", "['Perfil','Meu perfil']")
+
+# 3) dwell menor: gravacao ~85s (como no teste que funcionou) -> sessao nao expira
+dwell = {'00_splash':2800,'01_inicio':9300,'02_inicio_reservar':6800,
+         '03_agendar':8300,'04_servico':6800,'05_fila':6800,
+         '06_pacotes':2000,'07_perfil':4800,'08_inicio_fim':7800}
+for s, ms in dwell.items():
+    g = re.sub(r"screen\(page,'" + s + r"',\d+\)", "screen(page,'%s',%d)" % (s, ms), g)
+
+io.open(p, 'w', encoding='utf-8').write(g)
+
+# ---------- montar_reel.js ----------
+p = 'montar_reel.js'
+m = io.open(p, encoding='utf-8').read()
+m = re.sub(r"const STRETCH = [\d.]+;", "const STRETCH = 2.0;", m)
+m = m.replace("['home2','01_inicio',9,7.0]", "['home2','01_inicio',9,4.0]")
+io.open(p, 'w', encoding='utf-8').write(m)
+
+print("OK - corrigido")
+print("  sair bloqueado :", "desconectar" in g)
+print("  label Conta    :", "'Conta'" not in g)
+print("  STRETCH        :", re.search(r"const STRETCH = ([\d.]+)", m).group(1))
