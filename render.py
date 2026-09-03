@@ -39,8 +39,9 @@ def encaixar(rgba, w, h):
     nw, nh = max(1,int(round(sw*s))), max(1,int(round(sh*s)))
     it = cv2.INTER_AREA if s < 1 else cv2.INTER_CUBIC
     r = cv2.resize(rgba, (nw, nh), interpolation=it).astype(np.float32)
+    if r.ndim == 2: r = cv2.cvtColor(r.astype(np.uint8), cv2.COLOR_GRAY2BGR).astype(np.float32)
     out = np.zeros((h, w, 3), np.float32)
-    a = r[:,:,3:4]/255.0
+    a = (r[:,:,3:4]/255.0) if r.shape[2] == 4 else np.ones((nh, nw, 1), np.float32)
     ox, oy = (w-nw)//2, (h-nh)//2
     out[oy:oy+nh, ox:ox+nw] = nitidez(r[:,:,:3]*a)
     return out

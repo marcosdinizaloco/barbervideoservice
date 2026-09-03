@@ -6,6 +6,9 @@ import sys, os, json, time, urllib.request, urllib.error, numpy as np, cv2
 # ==================== EDITE SO ISTO ====================
 TOKEN_REPLICATE = os.environ.get('REPLICATE_TOKEN', 'COLE_AQUI_O_TOKEN')
 ESCALA          = 4        # 2 ou 4
+# True = o fundo escuro da logo some dentro da tela do celular.
+# False = a logo entra exatamente como veio, com o fundo dela.
+FUNDO_ESCURO_SOME = False
 # =======================================================
 
 ORIG, OUT = sys.argv[1], sys.argv[2]
@@ -98,7 +101,13 @@ if max(h, w) > LADO:
     s = LADO / max(h, w)
     im = cv2.resize(im, (max(1,int(w*s)), max(1,int(h*s))), interpolation=cv2.INTER_AREA)
 
-cv2.imwrite(os.path.join(OUT, 'logo_tela.png'), im)
+tela_img = im
+if FUNDO_ESCURO_SOME and (im.ndim == 3 and im.shape[2] == 3):
+    g = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY).astype(np.float32)
+    a = np.clip((g - 14) / 60.0, 0, 1.0) ** 0.6
+    a = cv2.GaussianBlur(a, (3, 3), 0)
+    tela_img = np.dstack([im.astype(np.float32), a * 255.0]).astype(np.uint8)
+cv2.imwrite(os.path.join(OUT, 'logo_tela.png'), tela_img)
 
 # marca d'agua de baixo: 300px, transparencia pelo brilho
 LADO_M = 300
