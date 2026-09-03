@@ -65,6 +65,33 @@ def render_txt(txt, cap_h, maxw):
 
 TXT_IMG = render_txt(TXT, 27, 358) if TXT else None
 
+def colar(dst, M, bx, by, w, h):
+    """Cobre uma area da tela com a propria cor do fundo (preto do celular)."""
+    Mp = M.copy()
+    Mp[0,2] = M[0,0]*bx + M[0,1]*by + M[0,2]
+    Mp[1,2] = M[1,0]*bx + M[1,1]*by + M[1,2]
+    c4 = np.array([[0,0],[w,0],[0,h],[w,h]], np.float32)
+    d = c4 @ Mp[:,:2].T + Mp[:,2]
+    x0 = max(0,int(d[:,0].min())-2); y0 = max(0,int(d[:,1].min())-2)
+    x1 = min(OUT_W,int(d[:,0].max())+3); y1 = min(OUT_H,int(d[:,1].max())+3)
+    if x1 <= x0 or y1 <= y0: return
+    # cor do fundo: mediana de uma faixa logo acima e logo abaixo da area
+    amostras = []
+    for yy in (max(0,y0-14), min(OUT_H-1,y1+6)):
+        amostras.append(dst[yy:yy+8, x0:x1].reshape(-1,3))
+    fundo = np.median(np.concatenate(amostras,0), 0) if amostras else np.zeros(3)
+    tapa = np.zeros((h, w, 4), np.float32)
+    tapa[:,:,0]=fundo[0]; tapa[:,:,1]=fundo[1]; tapa[:,:,2]=fundo[2]
+    am = np.ones((h, w), np.float32)
+    am[:5]=0; am[-5:]=0; am[:,:5]=0; am[:,-5:]=0
+    tapa[:,:,3] = cv2.GaussianBlur(am, (11,11), 0) * 255.0
+    Ms = Mp.copy(); Ms[0,2] -= x0; Ms[1,2] -= y0
+    wp = cv2.warpAffine(tapa, Ms, (x1-x0, y1-y0), flags=cv2.INTER_LINEAR,
+                        borderMode=cv2.BORDER_CONSTANT, borderValue=(0,0,0,0))
+    a = wp[:,:,3:4]/255.0
+    roi = dst[y0:y1, x0:x1].astype(np.float32)
+    dst[y0:y1, x0:x1] = np.clip(roi*(1-a) + wp[:,:,:3]*a, 0, 255).astype(np.uint8)
+
 def somar(dst, delta, M, bx, by, ss=1):
     """Soma um patch (definido em coordenadas do mundo) usando a mesma camera
     do video, para acompanhar o movimento do celular."""
@@ -127,7 +154,9 @@ while True:
         M = M_affine(fi)
         for e in ent:
             x, y, w, h = e["b"]; k = float(e.get("a",1.0))
-            if e["k"] == "logo":
+            if e["k"] == "cobrir":
+                colar(fr, M, x, y, w, h)
+            elif e["k"] == "logo":
                 an = float(e.get("an", k))
                 new, old = peca_logo(w, h)
                 somar(fr, new*an - old*k, M, x, y, ss=SS)
