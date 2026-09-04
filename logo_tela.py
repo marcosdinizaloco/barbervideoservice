@@ -7,7 +7,10 @@ im = cv2.imread(src)
 if im is None: raise SystemExit("splash nao encontrada: " + src)
 H, W = im.shape[:2]
 g = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
-band = g[int(H*0.12):int(H*0.80), :]
+# a splash nova e preta com a logo ocupando 80% da tela: precisa da area
+# quase inteira, senao a logo sai cortada em cima e embaixo
+TOPO, BASE = 0.03, 0.97
+band = g[int(H*TOPO):int(H*BASE), :]
 box = None
 for thr in (50, 38, 28, 20):
     _, th = cv2.threshold(band, thr, 255, cv2.THRESH_BINARY)
@@ -17,7 +20,7 @@ for thr in (50, 38, 28, 20):
     if b:
         x1 = min(int(s[0]) for s in b); y1 = min(int(s[1]) for s in b)
         x2 = max(int(s[0]+s[2]) for s in b); y2 = max(int(s[1]+s[3]) for s in b)
-        box = (x1, y1 + int(H*0.12), x2, y2 + int(H*0.12)); break
+        box = (x1, y1 + int(H*TOPO), x2, y2 + int(H*TOPO)); break
 if box is None: raise SystemExit("logo nao encontrada na splash")
 x1,y1,x2,y2 = box
 m = int(max(x2-x1, y2-y1) * 0.04)

@@ -14,8 +14,9 @@ BASE, MARCAS, LOGO, WM, NOME, OUT = sys.argv[1:7]
 FONT = os.path.join(D, 'Oswald-600.ttf')
 
 SS      = 2      # super-amostragem: desenha em 2x para a logo sair nitida
-WM_H    = 215    # altura da marca d'agua
-WM_Y    = 1696   # fica abaixo da tela do celular em todos os quadros
+FAIXA_Y = 1694   # topo da faixa preta (logo abaixo da tela do celular)
+WM_H    = 186    # altura da marca d'agua dentro da faixa
+WM_Y    = FAIXA_Y + (OUT_H - FAIXA_Y - WM_H)//2   # logo centralizada na faixa
 
 marcas = json.load(open(MARCAS))
 T_logo = cv2.imread(os.path.join(D, 'logo_antiga.png')).astype(np.float32)
@@ -33,18 +34,23 @@ def nitidez(img, amt=0.55):
     b = cv2.GaussianBlur(img, (0,0), 1.0)
     return np.clip(img + (img-b)*amt, 0, 255)
 
+FOLGA = 0.96   # a logo nunca encosta na borda da caixa: sem risco de linha
+
 def encaixar(rgba, w, h):
     sh, sw = rgba.shape[:2]
-    s = min(w/sw, h/sh)
+    s = min(w/sw, h/sh) * FOLGA
     nw, nh = max(1,int(round(sw*s))), max(1,int(round(sh*s)))
     it = cv2.INTER_AREA if s < 1 else cv2.INTER_CUBIC
     r = cv2.resize(rgba, (nw, nh), interpolation=it).astype(np.float32)
     if r.ndim == 2: r = cv2.cvtColor(r.astype(np.uint8), cv2.COLOR_GRAY2BGR).astype(np.float32)
     out = np.zeros((h, w, 3), np.float32)
     a = (r[:,:,3:4]/255.0) if r.shape[2] == 4 else np.ones((nh, nw, 1), np.float32)
+    a = np.where(a < 0.02, 0.0, a)             # alpha duro: nada de veu retangular
     ox, oy = (w-nw)//2, (h-nh)//2
-    out[oy:oy+nh, ox:ox+nw] = nitidez(r[:,:,:3]*a)
-    return out
+    out[oy:oy+nh, ox:ox+nw] = r[:,:,:3]*a
+    # o realce e feito na tela inteira do patch: o estouro cai no preto,
+    # e nao vira uma linha na aresta da caixa
+    return nitidez(out)
 
 def render_txt(txt, cap_h, maxw):
     size = max(8, int(cap_h/0.72))
@@ -66,31 +72,69 @@ def render_txt(txt, cap_h, maxw):
 TXT_IMG = render_txt(TXT, 27, 358) if TXT else None
 
 def colar(dst, M, bx, by, w, h):
-    """Cobre uma area da tela com a propria cor do fundo (preto do celular)."""
+    """Apaga o DESENHO antigo dentro de uma area, sem tocar no resto da tela.
+    Nada de tapar a caixa inteira: isso deixava um retangulo de preto diferente.
+    Aqui a mascara e o proprio desenho antigo (pixels claros), e o buraco e
+    preenchido com o degrade e o grao da tela em volta."""
     Mp = M.copy()
     Mp[0,2] = M[0,0]*bx + M[0,1]*by + M[0,2]
     Mp[1,2] = M[1,0]*bx + M[1,1]*by + M[1,2]
     c4 = np.array([[0,0],[w,0],[0,h],[w,h]], np.float32)
     d = c4 @ Mp[:,:2].T + Mp[:,2]
-    x0 = max(0,int(d[:,0].min())-2); y0 = max(0,int(d[:,1].min())-2)
-    x1 = min(OUT_W,int(d[:,0].max())+3); y1 = min(OUT_H,int(d[:,1].max())+3)
-    if x1 <= x0 or y1 <= y0: return
-    # cor do fundo: mediana de uma faixa logo acima e logo abaixo da area
-    amostras = []
-    for yy in (max(0,y0-14), min(OUT_H-1,y1+6)):
-        amostras.append(dst[yy:yy+8, x0:x1].reshape(-1,3))
-    fundo = np.median(np.concatenate(amostras,0), 0) if amostras else np.zeros(3)
-    tapa = np.zeros((h, w, 4), np.float32)
-    tapa[:,:,0]=fundo[0]; tapa[:,:,1]=fundo[1]; tapa[:,:,2]=fundo[2]
-    am = np.ones((h, w), np.float32)
-    am[:5]=0; am[-5:]=0; am[:,:5]=0; am[:,-5:]=0
-    tapa[:,:,3] = cv2.GaussianBlur(am, (11,11), 0) * 255.0
+    FOLGA_PX = 24
+    x0 = max(0, int(d[:,0].min())-FOLGA_PX); y0 = max(0, int(d[:,1].min())-FOLGA_PX)
+    x1 = min(OUT_W, int(d[:,0].max())+FOLGA_PX); y1 = min(OUT_H, int(d[:,1].max())+FOLGA_PX)
+    if x1-x0 < 8 or y1-y0 < 8: return
+
     Ms = Mp.copy(); Ms[0,2] -= x0; Ms[1,2] -= y0
-    wp = cv2.warpAffine(tapa, Ms, (x1-x0, y1-y0), flags=cv2.INTER_LINEAR,
-                        borderMode=cv2.BORDER_CONSTANT, borderValue=(0,0,0,0))
-    a = wp[:,:,3:4]/255.0
+    quad = cv2.warpAffine(np.ones((h, w), np.float32), Ms, (x1-x0, y1-y0),
+                          flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+    dentro = quad > 0.5
+    if dentro.sum() < 64: return
+
     roi = dst[y0:y1, x0:x1].astype(np.float32)
-    dst[y0:y1, x0:x1] = np.clip(roi*(1-a) + wp[:,:,:3]*a, 0, 255).astype(np.uint8)
+    hh, ww = roi.shape[:2]
+    g = roi.mean(2)
+
+    nivel = float(np.median(g[dentro]))
+    alvo = dentro & (g > nivel + 3.0) & (g > 5.0)          # o desenho antigo
+    if alvo.sum() < 30: return                             # nao ha o que apagar
+    alvo = cv2.dilate(alvo.astype(np.uint8), np.ones((5,5), np.uint8), iterations=2) > 0
+    alvo = alvo & dentro
+
+    bg = (dentro & ~alvo) & (g < 90)                       # tela limpa em volta
+    if bg.sum() < 200:
+        bg = (~alvo) & (g < 90)
+    if bg.sum() < 200: return
+
+    yy, xx = np.mgrid[0:hh, 0:ww].astype(np.float32)
+    yy /= hh; xx /= ww
+    A = np.stack([np.ones_like(xx), xx, yy, xx*xx, xx*yy, yy*yy], -1)
+    Af = A[bg]
+
+    bgu = bg.astype(np.uint8)
+    _, rot = cv2.distanceTransformWithLabels(1 - bgu, cv2.DIST_L2, 3,
+                                             labelType=cv2.DIST_LABEL_PIXEL)
+    iy, ix = np.where(bgu > 0)
+    ordem = rot[bgu > 0]
+    n = int(rot.max()) + 1
+    my = np.zeros(n, np.int32); mx = np.zeros(n, np.int32)
+    my[ordem] = iy; mx[ordem] = ix
+    py, px = np.mgrid[0:hh, 0:ww]
+    ny, nx = my[rot], mx[rot]
+    sy = np.clip(2*ny - py, 0, hh-1); sx = np.clip(2*nx - px, 0, ww-1)
+    fora = bgu[sy, sx] == 0
+    sy = np.where(fora, ny, sy); sx = np.where(fora, nx, sx)
+
+    macio = cv2.GaussianBlur(alvo.astype(np.float32), (0,0), 2.0)[..., None]
+    novo = roi.copy()
+    for c in range(3):
+        coef, *_ = np.linalg.lstsq(Af, roi[..., c][bg], rcond=None)
+        est = (A.reshape(-1,6) @ coef).reshape(hh, ww)
+        res = roi[..., c] - est
+        novo[..., c] = np.clip(est + res[sy, sx], 0, 255)
+    saida = roi*(1-macio) + novo*macio
+    dst[y0:y1, x0:x1] = np.clip(saida, 0, 255).astype(np.uint8)
 
 def somar(dst, delta, M, bx, by, ss=1):
     """Soma um patch (definido em coordenadas do mundo) usando a mesma camera
@@ -157,11 +201,18 @@ while True:
             if e["k"] == "cobrir":
                 colar(fr, M, x, y, w, h)
             elif e["k"] == "logo":
+                # 1) cobre a area da logo antiga com o proprio preto da tela
+                #    (nada de subtracao, que deixava fantasma e retangulo)
+                colar(fr, M, x, y, w, h)
+                # 2) soma SO os pixels da logo master
                 an = float(e.get("an", k))
-                new, old = peca_logo(w, h)
-                somar(fr, new*an - old*k, M, x, y, ss=SS)
+                if an > 0.001:
+                    new, _ = peca_logo(w, h)
+                    somar(fr, new*an, M, x, y, ss=SS)
             elif e["k"] == "nome" and TXT_IMG is not None:
                 somar(fr, peca_nome()*k, M, x, y)
+    # faixa preta chapada no rodape: a logo assenta nela, nunca sobre a mao
+    fr[FAIXA_Y:] = 0
     if wm_a is not None:
         hh, ww = wm.shape[:2]
         roi = fr[WM_Y:WM_Y+hh, WX:WX+ww].astype(np.float32)
