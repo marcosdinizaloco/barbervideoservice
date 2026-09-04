@@ -159,7 +159,8 @@ def ia_valida(dados_img, nome):
         corpo = {"contents": [{"parts": [
                     {"text": pergunta},
                     {"inline_data": {"mime_type": "image/jpeg", "data": b64}}]}],
-                 "generationConfig": {"temperature": 0, "maxOutputTokens": 5}}
+                 "generationConfig": {"temperature": 0, "maxOutputTokens": 64,
+                                      "thinkingConfig": {"thinkingBudget": 0}}}
         modelos = ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']
         r = None
         for mod in modelos:
@@ -176,8 +177,9 @@ def ia_valida(dados_img, nome):
             print('  IA: nenhum modelo disponivel'); return None
         t = (((r.get('candidates') or [{}])[0].get('content') or {}).get('parts') or [{}])[0].get('text','')
         t = t.strip().upper()
-        if t.startswith('SIM'): return True
-        if t.startswith('NAO') or t.startswith('NÃO'): return False
+        if 'SIM' in t: return True
+        if 'NAO' in t or 'NÃO' in t: return False
+        print('  IA respondeu algo que nao entendi: %r' % t[:60])
     except Exception as e:
         print('  IA indisponivel:', str(e)[:80])
     return None
@@ -192,6 +194,8 @@ def validar(im, dados_originais, nome):
     if not CHAVE_IA:
         print('  ATENCAO: GEMINI_KEY nao configurada. A checagem visual por IA'
               ' esta desligada e a validacao fica so nos sinais graficos.')
+    else:
+        print('  consultando a IA...')
     veredito = ia_valida(dados_originais, nome)
     if veredito is True:
         if rosto:
